@@ -1,9 +1,21 @@
 import os
 import shutil
+import warnings
 
 import numpy as np
 import pyscf
 from pyscf import grad, gto, lib, hessian, qmmm, tddft
+
+try:
+    from gpu4pyscf.drivers.dft_3c_driver import parse_3c, MethodType, gen_disp_fun, gen_disp_grad_fun, gen_disp_hess_fun
+except Exception as e:
+    print()
+    print("Either you don't have a GPU, so cupy failed with \"CUDA driver version is insufficient for CUDA runtime version\"")
+    print("Or GPU4PySCF version is lower than 1.3.1, so import failed with \"No module named 'gpu4pyscf.drivers.dft_3c_driver'\"")
+    print("Or some other problem occurs when trying to load parse_3c() function from gpu4pyscf.")
+    print("Please contact gpu4pyscf developers for more info.")
+    print()
+    raise e
 
 from pysisyphus.calculators.OverlapCalculator import OverlapCalculator
 from pysisyphus.helpers import geom_loader
@@ -59,6 +71,13 @@ class PySCF(OverlapCalculator):
             self.multisteps[self.method] = ("scf", self.method)
         if self.xc and self.method != "tddft":
             self.method = "dft"
+
+        if len(self.xc) > 13 and self.xc[-13:] == "3c_customized":
+            pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = parse_3c(xc[:-11])
+            self.parameters_3c = pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp
+        else:
+            self.parameters_3c = None
+
         self.root = root
         self.nstates = nstates
         if self.method == "tddft":
@@ -139,6 +158,13 @@ class PySCF(OverlapCalculator):
         mol = gto.Mole()
         mol.atom = [(atom, c) for atom, c in zip(atoms, coords.reshape(-1, 3))]
         mol.basis = self.basis
+        if self.parameters_3c is not None:
+            pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
+            if self.basis != basis:
+                warnings.warn(f"The basis provided in the input ({self.basis}) is not the required basis ({basis}) for the 3c method. "
+                              f"The 3c basis ({basis}) will be used.")
+            mol.basis = basis
+            mol.ecp = ecp
         mol.unit = "Bohr"
         mol.charge = self.charge
         mol.spin = self.mult - 1
@@ -193,6 +219,9 @@ class PySCF(OverlapCalculator):
         grad_driver = mf.Gradients()
         if self.root:
             grad_driver.state = self.root
+        if self.parameters_3c is not None:
+            pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
+            grad_driver.get_dispersion = MethodType(gen_disp_grad_fun(xc_disp, xc_gcp), grad_driver)
         gradient = grad_driver.kernel()
         self.log("Completed gradient step")
 
@@ -215,7 +244,12 @@ class PySCF(OverlapCalculator):
 
         mol = self.prepare_input(atoms, coords)
         mf = self.run(mol, point_charges=point_charges)
-        H = mf.Hessian().kernel()
+        hessian_driver = mf.Hessian()
+        if self.parameters_3c is not None:
+            pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
+            hessian_driver.get_dispersion = MethodType(gen_disp_hess_fun(xc_disp, xc_gcp), hessian_driver)
+            hessian_driver.auxbasis_response = 2
+        H = hessian_driver.kernel()
 
         # The returned hessian is 4d ... ok. This probably serves a purpose
         # that I don't understand. We transform H to a nice, simple 2d array.
@@ -252,6 +286,14 @@ class PySCF(OverlapCalculator):
                 if self.auxbasis:
                     mf = mf.density_fit(auxbasis=self.auxbasis)
                     self.log(f"Using density fitting with auxbasis {self.auxbasis}.")
+
+                if self.parameters_3c is not None:
+                    # Caution: make sure the dispersion is set after to_gpu() function
+                    pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
+                    mf.xc = pyscf_xc
+                    mf.nlc = nlc
+                    mf.get_dispersion = MethodType(gen_disp_fun(xc_disp, xc_gcp), mf)
+                    mf.do_disp = lambda: True
 
                 if point_charges is not None:
                     mf = qmmm.mm_charge(mf, point_charges[:, :3], point_charges[:, 3])
