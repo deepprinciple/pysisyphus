@@ -68,7 +68,7 @@ importlib-resources==5.12.0
     # via matplotlib
 invoke==2.1.2
     # via fabric
-jinja2==3.1.4
+jinja2==3.1.5
     # via
     #   distributed
     #   pysisyphus (setup.cfg)
@@ -186,7 +186,7 @@ toolz==0.12.0
     #   dask
     #   distributed
     #   partd
-tornado==6.4.1
+tornado==6.4.2
     # via distributed
 urllib3==2.2.2
     # via
