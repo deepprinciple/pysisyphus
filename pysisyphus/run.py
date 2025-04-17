@@ -115,6 +115,14 @@ try:
 except ImportError:
     pass
 
+try:
+    from pysisyphus.calculators.MLFF import MLFF
+
+    CALC_DICT["mlff"] = MLFF
+except ImportError:
+    pass
+
+
 COS_DICT = {
     "neb": NEB.NEB,
     "aneb": AdaptiveNEB.AdaptiveNEB,

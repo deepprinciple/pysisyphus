@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from .version import version as __version__
+from .__version__ import __version__
 
 logger = logging.getLogger("pysisyphus")
 logger.setLevel(logging.DEBUG)
