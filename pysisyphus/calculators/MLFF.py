@@ -66,9 +66,7 @@ class MLFF(Calculator):
             self.model = EquiformerV2Calculator(weight='/root/.local/mlff/equiformerv2/ts1x-tuned_epoch2199.ckpt',device="cpu")
         elif self.method == 'alpha':
             from alphanet.calculator import AlphaNetCalculator
-            from alphahess1.calculator import AlphaNetHessCalculator
             self.model = AlphaNetCalculator(weight='/root/.local/mlff/alphanet/ts1x-tuned.ckpt',device="cpu")
-            self.hessmodel = AlphaNetHessCalculator(weight='/root/alphanet_test/ff-epoch=259-val-totloss=0.1261-val-MAE_E=0.1261-val-MAE_F=0.0000.ckpt',device="cpu")
         elif self.method == 'ani':
             # use a fine-tuned model
             #from torchani.calculator import ANICalculator
