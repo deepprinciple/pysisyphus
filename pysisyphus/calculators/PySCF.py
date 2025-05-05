@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 import pyscf
-from pyscf import grad, gto, lib, hessian, qmmm, tddft
+from pyscf import grad, gto, lib, hessian, qmmm, tddft, solvent
 
 try:
     from gpu4pyscf.drivers.dft_3c_driver import parse_3c, MethodType, gen_disp_fun, gen_disp_grad_fun, gen_disp_hess_fun
@@ -15,7 +15,8 @@ except Exception as e:
     print("Or some other problem occurs when trying to load parse_3c() function from gpu4pyscf.")
     print("Please contact gpu4pyscf developers for more info.")
     print()
-    raise e
+    #raise e
+    pass
 
 from pysisyphus.calculators.OverlapCalculator import OverlapCalculator
 from pysisyphus.helpers import geom_loader
@@ -51,6 +52,8 @@ class PySCF(OverlapCalculator):
         basis,
         xc=None,
         method="scf",
+        solvation_model=False,
+        solvent_epi=78.3553,
         root=None,
         nstates=None,
         auxbasis=None,
@@ -67,6 +70,8 @@ class PySCF(OverlapCalculator):
         self.basis = basis
         self.xc = xc
         self.method = method.lower()
+        self.solvation_model = solvation_model
+        self.solvent_epi = solvent_epi
         if self.method in ("tda", "tddft") and self.xc is None:
             self.multisteps[self.method] = ("scf", self.method)
         if self.xc and self.method != "tddft":
@@ -152,6 +157,22 @@ class PySCF(OverlapCalculator):
             mf.nstates = self.nstates
         else:
             raise Exception("Unknown method '{step}'!")
+
+        # set up solvation model
+        if self.solvation_model:
+            if self.solvation_model in ['IEF-PCM', 'C-PCM', 'SS(V)PE', 'COSMO']:
+                mf = mf.PCM()
+                mf.with_solvent.method = self.solvation_model
+                mf.with_solvent.eps = self.solvent_epi
+            elif self.solvation_model == 'DDCOSMO':
+                mf = mf.DDCOSMO()
+                mf.with_solvent.eps = self.solvent_epi
+            elif self.solvation_model == 'SMD':
+                mf = mf.SMD()
+                mf.with_solvent.eps = self.solvent_epi
+            else:
+                print(f"Solvation model {self.solvation_model} is not supported in GPU4PySCF, treat as Null")
+
         return mf
 
     def prepare_mol(self, atoms, coords, build=True):
