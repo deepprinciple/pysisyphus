@@ -54,6 +54,8 @@ class PySCF(OverlapCalculator):
         method="scf",
         solvation_model=False,
         solvent_epi=78.3553,
+        ecp=None,
+        pseudo=None,
         root=None,
         nstates=None,
         auxbasis=None,
@@ -179,6 +181,10 @@ class PySCF(OverlapCalculator):
         mol = gto.Mole()
         mol.atom = [(atom, c) for atom, c in zip(atoms, coords.reshape(-1, 3))]
         mol.basis = self.basis
+        if ecp is not None:
+            mol.ecp = ecp
+        if pseudo is not None:
+            mol.pseudo = pseudo
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             if self.basis != basis:
