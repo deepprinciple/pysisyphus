@@ -79,7 +79,9 @@ class PySCF(OverlapCalculator):
         if self.xc and self.method != "tddft":
             self.method = "dft"
 
-        if len(self.xc) > 13 and self.xc[-13:] == "3c_customized":
+        self.ecp = ecp
+        self.pseudo = pseudo
+        if isinstance(xc, str) and len(self.xc) > 13 and self.xc[-13:] == "3c_customized":
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = parse_3c(xc[:-11])
             self.parameters_3c = pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp
         else:
@@ -181,10 +183,10 @@ class PySCF(OverlapCalculator):
         mol = gto.Mole()
         mol.atom = [(atom, c) for atom, c in zip(atoms, coords.reshape(-1, 3))]
         mol.basis = self.basis
-        if ecp is not None:
-            mol.ecp = ecp
-        if pseudo is not None:
-            mol.pseudo = pseudo
+        if self.ecp is not None:
+            mol.ecp = self.ecp
+        if self.pseudo is not None:
+            mol.pseudo = self.pseudo
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             if self.basis != basis:
@@ -346,6 +348,11 @@ class PySCF(OverlapCalculator):
         # Keep mf and dump mol
         # save_mol(mol, self.make_fn("mol.chk"))
         self.mf = mf.reset()  # release integrals and other temporary intermediates.
+        if self.use_gpu:
+            # DF methods are eager to use more memory. Recycle as much memory as
+            # possible for the DF tensor.
+            import cupy
+            cupy.get_default_memory_pool().free_all_blocks()
         self.calc_counter += 1
 
         return mf
