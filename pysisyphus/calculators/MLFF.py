@@ -53,7 +53,8 @@ class MLFF(Calculator):
         super().__init__(**kwargs)
 
         self.method = method
-        valid_method = ('ani', 'mace', 'dpa2', 'orb', 'left', 'chg', 'alpha', 'left-d', 'orb-d', 'matter', 'equiformerv2')
+        valid_method = ('ani', 'mace', 'dpa2', 'orb', 'left', 'chg', 'alpha', 'left-d',
+                        'orb-d', 'matter', 'equiformerv2', 'aimnet', 'esen', 'esen-c')
         assert (
             self.method in valid_method
         ), f"Invalid method argument. Allowed arguments are: {', '.join(valid_method)}!"
@@ -66,9 +67,7 @@ class MLFF(Calculator):
             self.model = EquiformerV2Calculator(weight='/root/.local/mlff/equiformerv2/ts1x-tuned_epoch2199.ckpt',device="cpu")
         elif self.method == 'alpha':
             from alphanet.calculator import AlphaNetCalculator
-            from alphahess1.calculator import AlphaNetHessCalculator
             self.model = AlphaNetCalculator(weight='/root/.local/mlff/alphanet/ts1x-tuned.ckpt',device="cpu")
-            self.hessmodel = AlphaNetHessCalculator(weight='/root/alphanet_test/ff-epoch=259-val-totloss=0.1261-val-MAE_E=0.1261-val-MAE_F=0.0000.ckpt',device="cpu")
         elif self.method == 'ani':
             # use a fine-tuned model
             #from torchani.calculator import ANICalculator
@@ -115,6 +114,13 @@ class MLFF(Calculator):
             from mattersim.forcefield import MatterSimCalculator
             calc = MatterSimCalculator(load_path="MatterSim-v1.0.0-5M.pth",device=self.device)
             self.model = calc
+        elif self.method == 'aimnet':
+            from aimnet.calculator import AIMNetCalculator
+            self.model = AIMNetCalculator(weight='/root/.local/mlff/aimnet/ff-epoch=749-val-totloss=0.0302-val-MAE_E=0.0554-val-MAE_F=0.0697.ckpt',device="cpu")
+        elif self.method[:4] == 'esen':
+            from fairchem.core import pretrained_mlip, FAIRChemCalculator
+            predictor = pretrained_mlip.load_predict_unit("/root/.local/mlff/esen/esen_sm_conserving_all.pt", device="cpu")
+            self.model = FAIRChemCalculator(predictor)
 
     def prepare_mol(self, atoms, coords):
         from ase.io import read
@@ -122,6 +128,7 @@ class MLFF(Calculator):
         string = make_xyz_str(atoms, coords.reshape((-1, 3)))
         with open('mlff.xyz','w') as f: f.write(string)
         mol = read('mlff.xyz')
+        mol.info.update({'spin': self.mult, 'charge': self.charge})
         os.remove('mlff.xyz')
         return mol
 
@@ -296,6 +303,46 @@ class MLFF(Calculator):
             data = mols_to_batch([molecule])
             energy, forces = self.model.model.forward(data)
             hessian = compute_hessian(data.pos, energy, forces).detach().cpu().numpy() / AU2EV * BOHR2ANG * BOHR2ANG
+            energy = energy.item() / AU2EV
+        elif self.method == 'aimnet':
+            from aimnet.calculator import mols_to_batch
+            data = mols_to_batch([molecule])
+            energy, forces = self.model.model.forward(data, retain_graph=True)
+            hessian = compute_hessian(data.pos, energy).detach().cpu().numpy() / AU2EV * BOHR2ANG * BOHR2ANG
+            energy = energy.item() / AU2EV
+        elif self.method == 'esen':
+            from fairchem.core.datasets import data_list_collater
+            data_obj = self.model.a2g(molecule)
+            data_obj.dataset = self.model.task_name
+            # 设置grad
+            data_obj.pos.requires_grad_(True)
+            self.model.predictor.model.module.backbone.direct_forces=False
+            
+            batch = data_list_collater([data_obj], otf_graph=True)
+            pred = self.model.predictor.predict(batch,)
+            for calc_key, predictor_key in self.model.calc_property_to_model_key_mapping.items():
+                if calc_key == "energy":
+                    energy = pred[predictor_key]
+                if calc_key == "forces":
+                    forces = pred[predictor_key]
+            hessian = compute_hessian(data_obj.pos, energy, forces).detach().cpu().numpy() / AU2EV * BOHR2ANG * BOHR2ANG
+            energy = energy.item() / AU2EV
+        elif self.method == 'esen-c':
+            # raise RuntimeError('conserving esen model still under devlopment')
+            from fairchem.core.datasets import data_list_collater
+            data_obj = self.model.a2g(molecule)
+            data_obj.dataset = self.model.task_name
+            # 设置grad
+            data_obj.pos.requires_grad_(True)
+            # self.model.predictor.model.module.backbone.direct_forces=False
+            
+            batch = data_list_collater([data_obj], otf_graph=True)
+            pred = self.model.predictor.predict(batch,)
+            for calc_key, predictor_key in self.model.calc_property_to_model_key_mapping.items():
+                if calc_key == "energy":
+                    energy = pred[predictor_key]
+                    break
+            hessian = compute_hessian(data_obj.pos, energy).detach().cpu().numpy() / AU2EV * BOHR2ANG * BOHR2ANG
             energy = energy.item() / AU2EV
 
         results = {
