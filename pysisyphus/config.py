@@ -54,6 +54,14 @@ except TypeError:
 
 if not config_fn.is_file():
     print(f"Couldn't find configuration file. Expected it at '{config_fn}'.")
+    # Auto-create default config file
+    try:
+        config_content = "[xtb]\n# Cmd to execute. Please ensure that xtb is on your $PATH.\ncmd=xtb\n"
+        with open(config_fn, 'w') as f:
+            f.write(config_content)
+        print(f"Created default configuration file at '{config_fn}'.")
+    except Exception as e:
+        print(f"Warning: Could not create configuration file at '{config_fn}': {e}")
 
 Config = configparser.ConfigParser()
 read_fns = Config.read(config_fn)
@@ -116,6 +124,25 @@ def parse_args(args):
     )
 
     return parser.parse_args(args)
+
+
+def create_default_config():
+    """Create ~/.pysisyphusrc file with default xtb configuration if it doesn't exist"""
+    config_file = Path.home() / ".pysisyphusrc"
+    
+    # Don't overwrite existing config file
+    if config_file.exists():
+        print(f"Configuration file already exists at {config_file}")
+        return
+    
+    config_content = "[xtb]\n# Cmd to execute. Please ensure that xtb is on your $PATH.\ncmd=xtb\n"
+    
+    try:
+        with open(config_file, 'w') as f:
+            f.write(config_content)
+        print(f"Created pysisyphus configuration file at {config_file}")
+    except Exception as e:
+        print(f"Warning: Could not create configuration file at {config_file}: {e}")
 
 
 def run_detect_paths():
