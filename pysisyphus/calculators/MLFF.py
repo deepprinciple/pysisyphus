@@ -1,18 +1,13 @@
 from collections import namedtuple
 import os
 import sys
+import datetime
+import random
 from pysisyphus.calculators.Calculator import Calculator
 from pysisyphus.constants import BOHR2ANG
 from pysisyphus.xyzloader import make_xyz_str
 
-REACTBENCH_PATH = os.environ.get('REACTBENCH_PATH', "/root/ReactBench")
-
-if REACTBENCH_PATH not in sys.path:
-    sys.path.insert(0, REACTBENCH_PATH)
-
-from ReactBench.Calculators import get_mlff, AVAILABLE_CALCULATORS
-
-OptResult = namedtuple("OptResult", "opt_geom opt_log")
+from qcservice.calculators import get_calculator
 
 
 class MLFF(Calculator):
@@ -44,20 +39,20 @@ class MLFF(Calculator):
 
         self.method = method
         self.device = device
-        valid_method = AVAILABLE_CALCULATORS
-        assert (
-            self.method in valid_method
-        ), f"Invalid method argument. Allowed arguments are: {', '.join(valid_method)}!"
-        
-        self.model = get_mlff(self.method, device=self.device)
+        self.model = get_calculator(self.method, device=self.device)
 
     def prepare_mol(self, atoms, coords):
         from ase.io import read
         coords = coords * BOHR2ANG
         string = make_xyz_str(atoms, coords.reshape((-1, 3)))
-        with open('mlff.xyz','w') as f: f.write(string)
-        mol = read('mlff.xyz')
-        os.remove('mlff.xyz')
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        random_num = random.randint(1000,9999)
+        filename = f'mlff_{timestamp}_{random_num}.xyz'
+        with open(filename,'w') as f: f.write(string)
+        mol = read(filename)
+        os.remove(filename)
+
         return mol
 
     def store_and_track(self, results, func, atoms, coords):
@@ -70,18 +65,18 @@ class MLFF(Calculator):
 
     def get_energy(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        results = self.model.get_energy(molecule)
-        return results
+        result = self.model.get_energy(molecule, return_dict=True)
+        return result
 
     def get_forces(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        results = self.model.get_forces(molecule)
-        return results
-
+        result = self.model.get_forces(molecule, return_dict=True)
+        return result
+    
     def get_hessian(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        results = self.model.get_hessian(molecule)
-        return results
+        result = self.model.get_hessian(molecule, return_dict=True)
+        return result
 
     def run_calculation(self, atoms, coords):
         return self.get_energy(atoms, coords)
