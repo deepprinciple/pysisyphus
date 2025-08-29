@@ -4,7 +4,7 @@ import sys
 import datetime
 import random
 from pysisyphus.calculators.Calculator import Calculator
-from pysisyphus.constants import BOHR2ANG
+from pysisyphus.constants import BOHR2ANG, AU2EV
 from pysisyphus.xyzloader import make_xyz_str
 
 from qcservice.calculators import get_calculator
@@ -55,27 +55,30 @@ class MLFF(Calculator):
 
         return mol
 
-    def store_and_track(self, results, func, atoms, coords):
-        if self.track:
-            self.store_overlap_data(atoms, coords)
-            if self.track_root():
-                # Redo the calculation with the updated root
-                results = func(atoms, coords, **prepare_kwargs)
-        return results
 
     def get_energy(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
         result = self.model.get_energy(molecule, return_dict=True)
+        if 'energy' in result:
+            result['energy'] = result['energy'] / AU2EV
         return result
 
     def get_forces(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
         result = self.model.get_forces(molecule, return_dict=True)
+        if 'forces' in result:
+            result['forces'] = result['forces'] / AU2EV / BOHR2ANG
+        if 'energy' in result:
+            result['energy'] = result['energy'] / AU2EV
         return result
     
     def get_hessian(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
         result = self.model.get_hessian(molecule, return_dict=True)
+        if 'hessian' in result:
+            result['hessian'] = result['hessian'] / AU2EV / BOHR2ANG**2
+        if 'energy' in result:
+            result['energy'] = result['energy'] / AU2EV
         return result
 
     def run_calculation(self, atoms, coords):
