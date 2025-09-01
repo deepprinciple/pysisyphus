@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 import pyscf
-from pyscf import grad, gto, lib, hessian, qmmm, tddft
+from pyscf import grad, gto, lib, hessian, qmmm, tddft, solvent
 
 try:
     from gpu4pyscf.drivers.dft_3c_driver import parse_3c, MethodType, gen_disp_fun, gen_disp_grad_fun, gen_disp_hess_fun
@@ -15,7 +15,8 @@ except Exception as e:
     print("Or some other problem occurs when trying to load parse_3c() function from gpu4pyscf.")
     print("Please contact gpu4pyscf developers for more info.")
     print()
-    raise e
+    #raise e
+    pass
 
 from pysisyphus.calculators.OverlapCalculator import OverlapCalculator
 from pysisyphus.helpers import geom_loader
@@ -51,6 +52,10 @@ class PySCF(OverlapCalculator):
         basis,
         xc=None,
         method="scf",
+        solvation_model=False,
+        solvent_epi=78.3553,
+        ecp=None,
+        pseudo=None,
         root=None,
         nstates=None,
         auxbasis=None,
@@ -67,12 +72,16 @@ class PySCF(OverlapCalculator):
         self.basis = basis
         self.xc = xc
         self.method = method.lower()
+        self.solvation_model = solvation_model
+        self.solvent_epi = solvent_epi
         if self.method in ("tda", "tddft") and self.xc is None:
             self.multisteps[self.method] = ("scf", self.method)
         if self.xc and self.method != "tddft":
             self.method = "dft"
 
-        if len(self.xc) > 13 and self.xc[-13:] == "3c_customized":
+        self.ecp = ecp
+        self.pseudo = pseudo
+        if isinstance(xc, str) and len(self.xc) > 13 and self.xc[-13:] == "3c_customized":
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = parse_3c(xc[:-11])
             self.parameters_3c = pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp
         else:
@@ -152,12 +161,32 @@ class PySCF(OverlapCalculator):
             mf.nstates = self.nstates
         else:
             raise Exception("Unknown method '{step}'!")
+
+        # set up solvation model
+        if self.solvation_model:
+            if self.solvation_model in ['IEF-PCM', 'C-PCM', 'SS(V)PE', 'COSMO']:
+                mf = mf.PCM()
+                mf.with_solvent.method = self.solvation_model
+                mf.with_solvent.eps = self.solvent_epi
+            elif self.solvation_model == 'DDCOSMO':
+                mf = mf.DDCOSMO()
+                mf.with_solvent.eps = self.solvent_epi
+            elif self.solvation_model == 'SMD':
+                mf = mf.SMD()
+                mf.with_solvent.eps = self.solvent_epi
+            else:
+                print(f"Solvation model {self.solvation_model} is not supported in GPU4PySCF, treat as Null")
+
         return mf
 
     def prepare_mol(self, atoms, coords, build=True):
         mol = gto.Mole()
         mol.atom = [(atom, c) for atom, c in zip(atoms, coords.reshape(-1, 3))]
         mol.basis = self.basis
+        if self.ecp is not None:
+            mol.ecp = self.ecp
+        if self.pseudo is not None:
+            mol.pseudo = self.pseudo
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             if self.basis != basis:
@@ -319,6 +348,11 @@ class PySCF(OverlapCalculator):
         # Keep mf and dump mol
         # save_mol(mol, self.make_fn("mol.chk"))
         self.mf = mf.reset()  # release integrals and other temporary intermediates.
+        if self.use_gpu:
+            # DF methods are eager to use more memory. Recycle as much memory as
+            # possible for the DF tensor.
+            import cupy
+            cupy.get_default_memory_pool().free_all_blocks()
         self.calc_counter += 1
 
         return mf

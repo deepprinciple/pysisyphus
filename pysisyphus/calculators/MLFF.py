@@ -38,8 +38,10 @@ class MLFF(Calculator):
         super().__init__(**kwargs)
 
         self.method = method
+
         self.device = device
         self.model = get_calculator(self.method, device=self.device)
+
 
     def prepare_mol(self, atoms, coords):
         from ase.io import read
