@@ -7,7 +7,7 @@ from pysisyphus.calculators.Calculator import Calculator
 from pysisyphus.constants import BOHR2ANG, AU2EV
 from pysisyphus.xyzloader import make_xyz_str
 
-from qcservice.calculators import get_calculator
+from yamo.calculators import get_calculator
 
 
 class MLFF(Calculator):
@@ -28,7 +28,7 @@ class MLFF(Calculator):
         Parameters
         ----------
         method: str
-            select a MLFF from calculators in ReactBench
+            select a MLFF from calculators
         
         mem : int
             Mememory per core in MB.
