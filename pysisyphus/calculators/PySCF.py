@@ -63,6 +63,7 @@ class PySCF(OverlapCalculator):
         verbose=0,
         unrestricted=None,
         grid_level=3,
+        atom_grid=None,
         pruning="nwchem",
         use_gpu=False,
         **kwargs,
@@ -251,6 +252,9 @@ class PySCF(OverlapCalculator):
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             grad_driver.get_dispersion = MethodType(gen_disp_grad_fun(xc_disp, xc_gcp), grad_driver)
+        with_df = getattr(mf, 'with_df', None)
+        if with_df:
+            grad_driver.auxbasis_response = 1
         gradient = grad_driver.kernel()
         self.log("Completed gradient step")
 
@@ -277,6 +281,8 @@ class PySCF(OverlapCalculator):
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             hessian_driver.get_dispersion = MethodType(gen_disp_hess_fun(xc_disp, xc_gcp), hessian_driver)
+        with_df = getattr(mf, 'with_df', None)
+        if with_df:
             hessian_driver.auxbasis_response = 2
         H = hessian_driver.kernel()
 
