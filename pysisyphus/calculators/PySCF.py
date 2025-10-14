@@ -63,9 +63,9 @@ class PySCF(OverlapCalculator):
         verbose=0,
         unrestricted=None,
         grid_level=3,
-        atom_grid=None,
         pruning="nwchem",
         use_gpu=False,
+        atom_grid=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -104,6 +104,7 @@ class PySCF(OverlapCalculator):
         else:
             self.unrestricted = unrestricted
         self.grid_level = int(grid_level)
+        self.atom_grid = atom_grid
         self.pruning = pruning.lower()
 
         self.chkfile = None
@@ -125,6 +126,8 @@ class PySCF(OverlapCalculator):
 
     def build_grid(self, mf):
         mf.grids.level = self.grid_level
+        if self.atom_grid is not None:
+            mf.grids.atom_grid = atom_grid
         mf.grids.prune = self.pruning_method[self.pruning]
         mf.grids.build()
 
