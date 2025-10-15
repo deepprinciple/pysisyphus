@@ -66,6 +66,7 @@ class PySCF(OverlapCalculator):
         pruning="nwchem",
         use_gpu=False,
         atom_grid=None,
+        derivative_grid_response=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -105,6 +106,7 @@ class PySCF(OverlapCalculator):
             self.unrestricted = unrestricted
         self.grid_level = int(grid_level)
         self.atom_grid = atom_grid
+        self.derivative_grid_response = derivative_grid_response
         self.pruning = pruning.lower()
 
         self.chkfile = None
@@ -258,6 +260,8 @@ class PySCF(OverlapCalculator):
         with_df = getattr(mf, 'with_df', None)
         if with_df:
             grad_driver.auxbasis_response = 1
+        if self.derivative_grid_response:
+            grad_driver.grid_response = True
         gradient = grad_driver.kernel()
         self.log("Completed gradient step")
 
@@ -287,6 +291,8 @@ class PySCF(OverlapCalculator):
         with_df = getattr(mf, 'with_df', None)
         if with_df:
             hessian_driver.auxbasis_response = 2
+        if self.derivative_grid_response:
+            hessian_driver.grid_response = True
         H = hessian_driver.kernel()
 
         # The returned hessian is 4d ... ok. This probably serves a purpose
