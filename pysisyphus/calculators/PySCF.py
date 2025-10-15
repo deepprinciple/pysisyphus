@@ -65,6 +65,7 @@ class PySCF(OverlapCalculator):
         grid_level=3,
         pruning="nwchem",
         use_gpu=False,
+        atom_grid=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -103,6 +104,7 @@ class PySCF(OverlapCalculator):
         else:
             self.unrestricted = unrestricted
         self.grid_level = int(grid_level)
+        self.atom_grid = atom_grid
         self.pruning = pruning.lower()
 
         self.chkfile = None
@@ -124,6 +126,8 @@ class PySCF(OverlapCalculator):
 
     def build_grid(self, mf):
         mf.grids.level = self.grid_level
+        if self.atom_grid is not None:
+            mf.grids.atom_grid = atom_grid
         mf.grids.prune = self.pruning_method[self.pruning]
         mf.grids.build()
 
@@ -251,6 +255,9 @@ class PySCF(OverlapCalculator):
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             grad_driver.get_dispersion = MethodType(gen_disp_grad_fun(xc_disp, xc_gcp), grad_driver)
+        with_df = getattr(mf, 'with_df', None)
+        if with_df:
+            grad_driver.auxbasis_response = 1
         gradient = grad_driver.kernel()
         self.log("Completed gradient step")
 
@@ -277,6 +284,8 @@ class PySCF(OverlapCalculator):
         if self.parameters_3c is not None:
             pyscf_xc, nlc, basis, ecp, (xc_disp, disp), xc_gcp = self.parameters_3c
             hessian_driver.get_dispersion = MethodType(gen_disp_hess_fun(xc_disp, xc_gcp), hessian_driver)
+        with_df = getattr(mf, 'with_df', None)
+        if with_df:
             hessian_driver.auxbasis_response = 2
         H = hessian_driver.kernel()
 
