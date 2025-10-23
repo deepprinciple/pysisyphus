@@ -129,7 +129,7 @@ class PySCF(OverlapCalculator):
     def build_grid(self, mf):
         mf.grids.level = self.grid_level
         if self.atom_grid is not None:
-            mf.grids.atom_grid = atom_grid
+            mf.grids.atom_grid = self.atom_grid
         mf.grids.prune = self.pruning_method[self.pruning]
         mf.grids.build()
 
