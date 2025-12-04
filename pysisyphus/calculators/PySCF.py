@@ -140,7 +140,7 @@ class PySCF(OverlapCalculator):
         else:
             return mf
 
-    def get_driver(self, step, mol=None, mf=None):
+    def get_driver(self, step, mol=None, mf=None, apply_solvent=True):
         def _get_driver():
             return self.drivers[(step, self.unrestricted)]
 
@@ -168,7 +168,14 @@ class PySCF(OverlapCalculator):
         else:
             raise Exception("Unknown method '{step}'!")
 
-        # set up solvation model
+        # set up solvation model (only if apply_solvent is True)
+        if apply_solvent:
+            mf = self.apply_solvation_model(mf)
+
+        return mf
+
+    def apply_solvation_model(self, mf):
+        """Apply solvation model to mf object."""
         if self.solvation_model:
             if self.solvation_model in ['IEF-PCM', 'C-PCM', 'SS(V)PE', 'COSMO']:
                 mf = mf.PCM()
@@ -182,7 +189,6 @@ class PySCF(OverlapCalculator):
                 mf.with_solvent.eps = self.solvent_epi
             else:
                 print(f"Solvation model {self.solvation_model} is not supported in GPU4PySCF, treat as Null")
-
         return mf
 
     def prepare_mol(self, atoms, coords, build=True):
@@ -315,7 +321,8 @@ class PySCF(OverlapCalculator):
         self.log(f"Running steps '{steps}' for method {self.method}")
         for i, step in enumerate(steps):
             if i == 0:
-                mf = self.get_driver(step, mol=mol)
+                # Don't apply solvent model yet - need to apply density_fit first
+                mf = self.get_driver(step, mol=mol, apply_solvent=False)
                 assert step in ("scf", "dft")
                 if self.chkfile:
                     # Copy old chkfile to new chkfile
@@ -330,6 +337,9 @@ class PySCF(OverlapCalculator):
                 if self.auxbasis:
                     mf = mf.density_fit(auxbasis=self.auxbasis)
                     self.log(f"Using density fitting with auxbasis {self.auxbasis}.")
+
+                # Apply solvation model after density_fit (if needed)
+                mf = self.apply_solvation_model(mf)
 
                 if self.parameters_3c is not None:
                     # Caution: make sure the dispersion is set after to_gpu() function
