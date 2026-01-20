@@ -54,6 +54,7 @@ class PySCF(OverlapCalculator):
         method="scf",
         solvation_model=False,
         solvent_epi=78.3553,
+        solvent=None,
         ecp=None,
         pseudo=None,
         root=None,
@@ -76,6 +77,7 @@ class PySCF(OverlapCalculator):
         self.method = method.lower()
         self.solvation_model = solvation_model
         self.solvent_epi = solvent_epi
+        self.solvent = solvent  # Solvent name for SMD model
         if self.method in ("tda", "tddft") and self.xc is None:
             self.multisteps[self.method] = ("scf", self.method)
         if self.xc and self.method != "tddft":
@@ -186,7 +188,12 @@ class PySCF(OverlapCalculator):
                 mf.with_solvent.eps = self.solvent_epi
             elif self.solvation_model == 'SMD':
                 mf = mf.SMD()
-                mf.with_solvent.eps = self.solvent_epi
+                # SMD requires solvent name, not epsilon
+                if self.solvent:
+                    mf.with_solvent.solvent = self.solvent
+                else:
+                    # Fallback: if no solvent name provided, try to use default or warn
+                    print(f"Warning: SMD model requires solvent name, but none provided. Using default.")
             else:
                 print(f"Solvation model {self.solvation_model} is not supported in GPU4PySCF, treat as Null")
         return mf
