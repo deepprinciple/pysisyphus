@@ -98,6 +98,7 @@ CALC_DICT = {
     "remote": Remote,
     "turbomole": Turbomole,
     "xtb": XTB,
+    "gxtb": GXTB,
     "cfour": CFOUR,
 }
 

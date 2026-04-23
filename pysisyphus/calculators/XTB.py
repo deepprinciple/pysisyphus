@@ -33,6 +33,9 @@ class XTB(Calculator):
         self,
         gbsa="",
         alpb="",
+        gxtb=False,
+        gbe="",
+        cosmo="",
         gfn=2,
         acc=1.0,
         iterations=250,
@@ -57,6 +60,14 @@ class XTB(Calculator):
         alpb : str, optional
             Solvent for ALPB calculation, by default no solvent model is
             used.
+        gxtb : bool, optional
+            Use the --gxtb flag for extended tight-binding calculations.
+        gbe : str, optional
+            Solvent for GBE calculation, by default no solvent model is
+            used.
+        cosmo : str, optional
+            Solvent for COSMO calculation, by default no solvent model is
+            used.
         gfn : int or str, must be (0, 1, 2, or "ff")
             Hamiltonian for the XTB calculation (GFN0, GFN1, GFN2, or GFNFF).
         acc : float, optional
@@ -79,6 +90,9 @@ class XTB(Calculator):
 
         self.gbsa = gbsa
         self.alpb = alpb
+        self.gxtb = gxtb
+        self.gbe = gbe
+        self.cosmo = cosmo
         self.gfn = gfn
         self.acc = acc
         self.iterations = iterations
@@ -193,9 +207,17 @@ class XTB(Calculator):
         elif self.alpb:
             alpb = f"--alpb {self.alpb}".split()
             add_args = add_args + alpb
+        elif self.gbe:
+            gbe = f"--gbe {self.gbe}".split()
+            add_args = add_args + gbe
+        elif self.cosmo:
+            cosmo = f"--cosmo {self.cosmo}".split()
+            add_args = add_args + cosmo
         # Select parametrization
         gfn = ["--gfnff"] if self.gfn == "ff" else f"--gfn {self.gfn}".split()
         add_args = add_args + gfn
+        if self.gxtb:
+            add_args.append("--gxtb")
         return add_args
 
     def get_pal_env(self):
@@ -416,3 +438,14 @@ class XTB(Calculator):
 
     def __str__(self):
         return "XTB calculator"
+
+
+class GXTB(XTB):
+    """XTB calculator with --gxtb flag enabled by default."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("gxtb", True)
+        super().__init__(**kwargs)
+
+    def __str__(self):
+        return "GXTB calculator"
