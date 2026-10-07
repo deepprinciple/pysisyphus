@@ -1,8 +1,3 @@
-from collections import namedtuple
-import os
-import sys
-import datetime
-import random
 from pysisyphus.calculators.Calculator import Calculator
 from pysisyphus.constants import BOHR2ANG, AU2EV
 from pysisyphus.xyzloader import make_xyz_str
@@ -29,7 +24,7 @@ class MLFF(Calculator):
         ----------
         method: str
             select a MLFF from calculators
-        
+
         mem : int
             Mememory per core in MB.
         quiet : bool, optional
@@ -48,37 +43,34 @@ class MLFF(Calculator):
         coords = coords * BOHR2ANG
         string = make_xyz_str(atoms, coords.reshape((-1, 3)))
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        random_num = random.randint(1000,9999)
-        filename = f'mlff_{timestamp}_{random_num}.xyz'
-        with open(filename,'w') as f: f.write(string)
-        mol = read(filename)
-        os.remove(filename)
+        # Preserve XYZ parsing/precision without shared temporary files.
+        from io import StringIO
+        mol = read(StringIO(string), format="xyz")
 
         return mol
 
 
     def get_energy(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        result = self.model.get_energy(molecule, return_dict=True)
+        result = dict(self.model.get_energy(molecule, return_dict=True))
         if 'energy' in result:
             result['energy'] = result['energy'] / AU2EV
         return result
 
     def get_forces(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        result = self.model.get_forces(molecule, return_dict=True)
+        result = dict(self.model.get_forces(molecule, return_dict=True))
         if 'forces' in result:
-            result['forces'] = result['forces'] / AU2EV / BOHR2ANG
+            result['forces'] = result['forces'] * BOHR2ANG / AU2EV
         if 'energy' in result:
             result['energy'] = result['energy'] / AU2EV
         return result
-    
+
     def get_hessian(self, atoms, coords):
         molecule = self.prepare_mol(atoms, coords)
-        result = self.model.get_hessian(molecule, return_dict=True)
+        result = dict(self.model.get_hessian(molecule, return_dict=True))
         if 'hessian' in result:
-            result['hessian'] = result['hessian'] / AU2EV / BOHR2ANG**2
+            result['hessian'] = result['hessian'] * BOHR2ANG**2 / AU2EV
         if 'energy' in result:
             result['energy'] = result['energy'] / AU2EV
         return result
