@@ -369,3 +369,92 @@ TIP3P
     :members:
     :undoc-members:
     :show-inheritance:
+
+MLFF models resident across serial jobs
+=====================================
+
+An MLFF calculator already keeps its YAMO model throughout one optimization.
+For a serial sequence of optimizations in a fixed worker, the optional
+``ResidentMLFFModel`` helper also retains the initialized model across jobs.
+It leaves RFO, convergence thresholds and optimizer histories unchanged.
+Normal MLFF construction without this context keeps its previous lifecycle.
+
+Create the helper **inside each worker**, after fixing its physical GPU mask
+and before CUDA initialization. Never change that mask once CUDA is initialized.
+Keep model registration and the complete PYSIS call inside the context:
+
+.. code-block:: python
+
+    from pysisyphus.calculators.mlff_resident import ResidentMLFFModel
+    from yamo.calculators.base import register_calculator
+
+    resident = ResidentMLFFModel()
+    for task in tasks:
+        identity = {
+            "checkpoint_sha256": task.checkpoint_sha256,
+            "source_revision": task.model_source_revision,
+            "use_ema": task.use_ema,
+            "force_mode": task.force_mode,
+            "hessian_mode": task.hessian_mode,
+            "charge": task.charge,
+            "multiplicity": task.multiplicity,
+            "physical_gpu": physical_gpu,
+        }
+        with resident.registration(identity, method="eqv3"):
+            # Register the task's native factory, including its conditioning.
+            # Perform its normal checkpoint/EMA compatibility handling here.
+            register_calculator("eqv3", make_native_factory(task))
+            # This creates a fresh MLFF wrapper and fresh optimizer per task.
+            run_pysis_task(task)
+
+    print(resident.metrics())
+
+``make_native_factory`` and ``run_pysis_task`` above denote the application's
+existing factory and PYSIS invocation, not new PYSIS APIs. The helper does not
+change checkpoint loading, EMA selection or scientific conditioning.
+
+The identity is an explicit application contract: include every setting that
+can alter predictions, especially checkpoint content, EMA and charge/spin.
+The cache additionally distinguishes method, factory keyword arguments and
+``CUDA_VISIBLE_DEVICES``. Re-registering a different factory under an unchanged
+identity deliberately reuses the model; the caller must change the identity
+when its model semantics change. The example conservatively uses different
+entries for different charge/spin, rather than mutating a resident model's
+conditioning. Only one model is retained, bounding the cache size.
+
+Before each new wrapper receives the model, its ASE property cache is reset.
+A raised exception evicts the resident model, and the original YAMO factory
+registration is restored when the context exits. Initialization failure is
+not cached. A normal non-converged optimization is still a normal return;
+it does not become converged through residency. The helper rejects reuse
+from another process/thread and nested contexts. It temporarily wraps the
+process-global YAMO registry, so the worker must run model registration and
+scientific calls serially, with no other threads accessing that registry.
+Do not share one helper between concurrent jobs.
+
+A finite EqV3 prototype comparison using Cartesian RFO/gau, unit initial
+Hessian and BFGS updates found second-task times of 9.97 to 8.37 seconds (KHP),
+17.60 to 15.63 seconds (SNAr), 10.42 to 8.39 seconds (hydrolysis), and 23.01 to
+21.98 seconds (IC). Warm tasks performed zero model loads, saving about
+1.5 seconds per task. The converged KHP/SNAr/hydrolysis examples retained their
+saved electronic energies. Both IC trials exhausted 150 steps; their different
+unfinished geometries do not establish strict numerical equivalence. These
+are four representative endpoints from a 32-run prototype pilot, not a
+whole-network speedup or a performance guarantee for other models.
+
+MLFF derivative units and geometry conversion
+--------------------------------------------
+
+The YAMO MLFF interface returns energy in eV, forces in eV/Angstrom, and
+Hessians in eV/Angstrom squared. PYSIS consumes Hartree, Hartree/Bohr, and
+Hartree/Bohr squared. Thus forces are multiplied by ``BOHR2ANG / AU2EV``
+and Hessians by ``BOHR2ANG**2 / AU2EV``. Earlier inverse Bohr factors in this
+wrapper scaled the derivatives incorrectly. This correction changes those
+derivative values independently of the optional residency feature.
+
+Geometry conversion retains the existing XYZ formatter and its precision but
+reads from ``StringIO``, avoiding temporary files on each evaluation. Results
+are copied before unit conversion to avoid mutating a native calculator's
+cached result dictionaries. CPU harmonic-potential finite differences check
+the energy/force/Hessian units; an actual RFO run checks cold/resident history
+independence and matching convergence. No optimizer thresholds are relaxed.
